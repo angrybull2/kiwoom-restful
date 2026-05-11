@@ -9,6 +9,9 @@ from kiwoom.config.trade import (
     COLUMN_MAPPER_TRADE,
     COLUMN_TRADE,
 )
+from kiwoom.http.logging_utils import LoggerLike, get_logger
+
+module_logger = get_logger(__name__)
 
 
 # 체결내역 관련 처리함수
@@ -42,10 +45,17 @@ def process(data: list[dict]) -> DataFrame:
     return df
 
 
-async def to_csv(file: str, path: str, df: DataFrame, encoding: str = ENCODING):
+async def to_csv(
+    file: str,
+    path: str,
+    df: DataFrame,
+    encoding: str = ENCODING,
+    logger: LoggerLike | None = None,
+):
+    active_logger = logger if logger is not None else module_logger
     # Validate
     if df.empty:
-        print("DataFrame is empty, skip writing to csv.")
+        active_logger.info("DataFrame is empty, skip writing to csv.")
         return
     if not path:
         path = getcwd()

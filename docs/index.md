@@ -23,11 +23,14 @@ Simple Python Wrapper for Kiwoom RESTful API
 * 간결한 API를 통한 빠른 프로토 타입 및 전략 최적화
 * Async Http 요청 및 응답 + Websocket 데이터 처리
 * 실시간 데이터 처리를 위한 non-블로킹 콜백 시스템 
-* msgpsec / orjson 기반 실시간 고속 json 파싱
+* msgspec / orjson 기반 실시간 고속 json 파싱
 * 초당 Http 연결/호출 제한 자동관리
 * Websocket ping-pong 자동처리
+* 키움 오류코드 분류 및 Websocket 연결 상태 검증
+* 외부 애플리케이션 logger 주입 지원
 
 모듈 관련 상세한 API 문서 페이지는 [이곳][doc]을 참고해 주세요.  
+운영 중 오류코드 대응과 Websocket 재연결 판단은 [Operations](operations.md)를 참고해 주세요.
 API에 변화가 없다면 구조상 큰 변화는 없을 예정입니다. (RC 단계)  
   
 ## Installation
@@ -141,39 +144,65 @@ class MyBot(Bot):
 ```
 
 Websocket 실시간 데이터 요청 구현예시
+
+VI발동/해제 실시간 데이터는 API ID `1h`, 장시작시간은 API ID `0s`를 사용하며,
+각각 `ViValuesType`, `MarketOpenTimeValuesType`으로 `msgspec` 디코딩할 수 있습니다.
 ```python
 import asyncio
+import msgspec
 import orjson
 import pandas as pd
 from kiwoom import Bot
+from kiwoom.config.real import MarketOpenTimeValuesType, RealData, ViValuesType
 
 class MyBot(Bot):
     def __init__(self, host: str, appkey: str, secretkey: str):
         super().__init__(host, appkey, secretkey)
         self.ticks: list[dict[str, str]] = []
 
-    async def on_receive_order_book(raw: str):
+    async def on_receive_order_book(msg: RealData):
         # 호가 데이터 처리 콜백함수 예시
-        # msg = json.loads(raw) # slow
-        msg = orjson.loads(raw) # fast
+        # values는 기호에 맞게 parsing 해서 사용
+        # values = json.loads(msg.values) # slow
+        values = orjson.loads(msg.values) # fast
         print(
-            f"종목코드: {msg['item']}, "
-            f"최우선매도호가: {msg['values']['41']}"
-            f"최우선매수호가: {msg['values']['51']}"
+            f"종목코드: {msg.item}, "
+            f"최우선매도호가: {values['41']}"
+            f"최우선매수호가: {values['51']}"
         )
     
-    async def on_receive_tick(raw: str):
+    async def on_receive_tick(msg: RealData):
         # 체결 데이터 처리 콜백함수 예시
-        self.list.append(orjson.loads(raw))
-        if len(self.list) >= 100:
-            df = pd.DataFrame(self.list)
+        self.ticks.append(orjson.loads(msg.values))
+        if len(self.ticks) >= 100:
+            df = pd.DataFrame(self.ticks)
             print(df)
 
-    async def run():
+    async def on_receive_vi(msg: RealData):
+        # VI발동/해제 데이터 처리 콜백함수 예시 (type '1h')
+        vi = msgspec.json.decode(msg.values, type=ViValuesType)
+        print(
+            f"종목코드: {vi.v9001}, "
+            f"종목명: {vi.v302}, "
+            f"VI적용구분: {vi.v1225}, "
+            f"VI발동가격: {vi.v1221}, "
+            f"VI해제시각: {vi.v1224}"
+        )
+
+    async def on_receive_market_open_time(msg: RealData):
+        # 장시작시간 데이터 처리 콜백함수 예시 (type '0s')
+        market_time = msgspec.json.decode(msg.values, type=MarketOpenTimeValuesType)
+        print(
+            f"장운영구분: {market_time.v215}, "
+            f"체결시간: {market_time.v20}, "
+            f"장시작예상잔여시간: {market_time.v214}"
+        )
+
+    async def run(self):
         # 거래소 통합 종목코드 받아오기 
         kospi, kosdaq = '0', '10'
-        kospi_codes = await bot.stock_list(kospi, ats=True)
-        kosdaq_codes = await bot.stock_list(kosdaq, ats=True)
+        kospi_codes = await self.stock_list(kospi, ats=True)
+        kosdaq_codes = await self.stock_list(kosdaq, ats=True)
 
         # 호가 데이터 수신 시 콜백 등록
         self.api.add_callback_on_real_data(
@@ -182,8 +211,18 @@ class MyBot(Bot):
         )
         # 체결 데이터 수신 시 콜백 등록
         self.api.add_callback_on_real_data(
-            real_tyle="0B",  # 실시간시세 > 주식체결
+            real_type="0B",  # 실시간시세 > 주식체결
             callback=self.on_receive_tick
+        )
+        # VI발동/해제 데이터 수신 시 콜백 등록
+        self.api.add_callback_on_real_data(
+            real_type="1h",  # 실시간시세 > VI발동/해제
+            callback=self.on_receive_vi
+        )
+        # 장시작시간 데이터 수신 시 콜백 등록
+        self.api.add_callback_on_real_data(
+            real_type="0s",  # 실시간시세 > 장시작시간
+            callback=self.on_receive_market_open_time
         )
 
         # 데이터 수신을 위한 서버 요청
@@ -192,6 +231,10 @@ class MyBot(Bot):
         codes1 = kospi_codes[:100]  
         await self.api.register_hoga(grp_no='1', codes=codes1)
         await self.api.register_tick(grp_no='1', codes=codes1)
+        await self.api.register_vi(grp_no='1', codes=codes1)
+        await self.api.register_market_open_time(grp_no='2')
+        # 여러 실시간 타입을 같이 등록할 수도 있음
+        # await self.api.register_real(grp_no='1', codes=codes1, types=['0B', '0D', '1h'])
         
         # 현재 키움증권 제한으로 100개 코드 지원
         # codes2 = kosdaq_codes[:100]
@@ -200,7 +243,8 @@ class MyBot(Bot):
         # await self.api.register_tick(grp_no='3', codes=codes1)
 
         # 데이터 수신 해제
-        await self.api.remove_register(grp_no='1', codes1, type=['0B', '0D'])
+        await self.api.remove_register(grp_no='1', codes=codes1, type=['0B', '0D', '1h'])
+        await self.api.remove_register(grp_no='2', codes=[''], type='0s')
         # await self.api.remove_register(grp_no='2', type='0D')  # 호가 '0D'
         # await self.api.remove_register(grp_no='3', type='0B')  # 체결 '0B'
 ```

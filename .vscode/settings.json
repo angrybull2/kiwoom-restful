@@ -1,0 +1,32 @@
+{
+    "python-envs.defaultEnvManager": "ms-python.python:conda",
+    "python-envs.defaultPackageManager": "ms-python.python:conda",
+    "terminal.integrated.rightClickBehavior": "paste",
+    "search.exclude": {
+        "**/old/**": true,
+        "**/backup/**": true,
+        "**/.venv/**": true,
+        "**/__pycache__/**": true,
+        "**/data/**": true,
+        "**/logs/**": true,
+        "**/log/**": true,
+        "**/node_modules/**": true,
+        "**/*.duckdb": true,
+        "**/*.db": true,
+        "**/*.sqlite": true,
+        "**/*.sqlite3": true        
+    },
+    "files.watcherExclude": {
+        "**/old/**": true,
+        "**/data/**": true,
+        "**/logs/**": true,
+        "**/log/**": true,
+        "**/.venv/**": true,
+        "**/node_modules/**": true,
+        "**/__pycache__/**": true,
+        "**/*.duckdb": true,
+        "**/*.db": true,
+        "**/*.sqlite": true,
+        "**/*.sqlite3": true
+    }
+}

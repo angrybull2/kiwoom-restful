@@ -16,6 +16,7 @@ extra_css:
 nav:
   - Home: index.md
   - API: api.md
+  - Operations: operations.md
 
 plugins:
   - search

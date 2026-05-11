@@ -11,7 +11,13 @@ class RealData:
 
     """
 
-    def __init__(self, values: bytes, type: str, name: str, item: str):
+    def __init__(
+        self,
+        values: bytes | Raw,
+        type: str,
+        name: str,
+        item: str,
+    ):
         """
         Initialize RealData instance.
 
@@ -21,7 +27,7 @@ class RealData:
             values_dic = msgspec.json.decode(values)
 
         Args:
-            values (bytes): utf-8 encoded bytes
+            values (bytes | Raw): utf-8 encoded bytes or msgspec Raw in opt-in zero-copy mode
             type (str): API type (ex. OB, 0D, ...)
             name (str): API name (ex. 주식체결, 주식호가잔량, ...)
             item (str): stock code
@@ -121,6 +127,46 @@ class HogaValuesType(Struct):
     v80: str = field(name="80")  # 매수잔량 10
 
 
+# To decode raw json with msgspec
+class ViValuesType(Struct):
+    """
+    To decode Real.data.values of type '1h'
+    """
+
+    # Real.Data.Values
+    v9001: str = field(name="9001")  # 종목코드
+    v302: str = field(name="302")  # 종목명
+    v13: str = field(name="13")  # 누적거래량
+    v14: str = field(name="14")  # 누적거래대금
+    v9068: str = field(name="9068")  # VI발동구분
+    v9008: str = field(name="9008")  # KOSPI,KOSDAQ,전체구분
+    v9075: str = field(name="9075")  # 장전구분
+    v1221: str = field(name="1221")  # VI발동가격
+    v1223: str = field(name="1223")  # 매매체결처리시각
+    v1224: str = field(name="1224")  # VI해제시각
+    v1225: str = field(name="1225")  # VI적용구분
+    v1236: str = field(name="1236")  # 기준가격 정적
+    v1237: str = field(name="1237")  # 기준가격 동적
+    v1238: str = field(name="1238")  # 괴리율 정적
+    v1239: str = field(name="1239")  # 괴리율 동적
+    v1489: str = field(name="1489")  # VI발동가 등락율
+    v1490: str = field(name="1490")  # VI발동횟수
+    v9069: str = field(name="9069")  # 발동방향구분
+    v1279: str = field(name="1279")  # Extra Item
+
+
+# To decode raw json with msgspec
+class MarketOpenTimeValuesType(Struct):
+    """
+    To decode Real.data.values of type '0s'
+    """
+
+    # Real.Data.Values
+    v215: str = field(name="215")  # 장운영구분
+    v20: str = field(name="20")  # 체결시간
+    v214: str = field(name="214")  # 장시작예상잔여시간
+
+
 class Types:
     TICK = {
         "20": int,  # 체결시간
@@ -170,4 +216,32 @@ class Types:
         "70": int,  # 매도잔량 10
         "60": int,  # 매수호가 10
         "80": int,  # 매수잔량 10
+    }
+
+    VI = {
+        "9001": str,  # 종목코드
+        "302": str,  # 종목명
+        "13": str,  # 누적거래량
+        "14": str,  # 누적거래대금
+        "9068": str,  # VI발동구분
+        "9008": str,  # KOSPI,KOSDAQ,전체구분
+        "9075": str,  # 장전구분
+        "1221": str,  # VI발동가격
+        "1223": str,  # 매매체결처리시각
+        "1224": str,  # VI해제시각
+        "1225": str,  # VI적용구분
+        "1236": str,  # 기준가격 정적
+        "1237": str,  # 기준가격 동적
+        "1238": str,  # 괴리율 정적
+        "1239": str,  # 괴리율 동적
+        "1489": str,  # VI발동가 등락율
+        "1490": str,  # VI발동횟수
+        "9069": str,  # 발동방향구분
+        "1279": str,  # Extra Item
+    }
+
+    MARKET_OPEN_TIME = {
+        "215": str,  # 장운영구분
+        "20": str,  # 체결시간
+        "214": str,  # 장시작예상잔여시간
     }

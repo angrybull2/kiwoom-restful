@@ -5,6 +5,7 @@ from typing import Callable
 from aiohttp import ClientResponse
 from aiohttp.web import HTTPException
 
+from kiwoom.http.logging_utils import LoggerLike, get_logger
 from kiwoom.http.response import Response
 
 __all__ = ["dumps", "debugger"]
@@ -50,7 +51,7 @@ def dumps(api, endpoint: str, api_id, headers: dict, data: dict, res: Response) 
 def debugger(fn) -> Callable:
     """
     Debugger decorator for Client.post method.
-    Even though debugging is disabled, it will print if error occurs.
+    Even though debugging is disabled, it logs request details if error occurs.
 
     Args:
         fn (function): function to be decorated
@@ -63,8 +64,20 @@ def debugger(fn) -> Callable:
     """
 
     @functools.wraps(fn)
-    async def wrapper(api, endpoint: str, api_id: str, headers: dict, data: dict) -> Response:
-        res: ClientResponse = await fn(api, endpoint, api_id, headers, data)
+    async def wrapper(
+        api,
+        endpoint: str,
+        api_id: str,
+        headers: dict | None = None,
+        data: dict | None = None,
+        logger: LoggerLike | None = None,
+    ) -> Response:
+        active_logger = (
+            api._resolve_logger(logger)
+            if hasattr(api, "_resolve_logger")
+            else get_logger(__name__, logger)
+        )
+        res: ClientResponse = await fn(api, endpoint, api_id, headers, data, logger=logger)
         async with res:
             # Async to sync Response
             resp = Response(
@@ -73,14 +86,14 @@ def debugger(fn) -> Callable:
 
             # Debugging
             if api.debugging:
-                print(dumps(api, endpoint, api_id, headers, data, resp))
+                active_logger.debug(dumps(api, endpoint, api_id, headers, data, resp))
 
             try:
                 res.raise_for_status()
             except HTTPException as err:
                 # Always debug when error occurs
                 if not api.debugging:
-                    print(dumps(api, endpoint, api_id, headers, data, resp))
+                    active_logger.error(dumps(api, endpoint, api_id, headers, data, resp))
                 raise err
         return resp
 

@@ -1,12 +1,13 @@
 import asyncio
 import contextlib
-from typing import Self, Optional
+from typing import Optional, Self
 
 from pandas import DataFrame
 
 from kiwoom import proc
 from kiwoom.api import API
 from kiwoom.config.http import EXCEPTIONS_TO_SUPPRESS
+from kiwoom.http.logging_utils import LoggerLike
 
 
 class Bot:
@@ -16,7 +17,14 @@ class Bot:
     사용자가 API 세부 동작을 알지 못해도 전략 수행에 집중할 수 있도록 합니다.
     """
 
-    def __init__(self, host: str, appkey: str, secretkey: str, api: API | None = None):
+    def __init__(
+        self,
+        host: str,
+        appkey: str,
+        secretkey: str,
+        api: API | None = None,
+        logger: LoggerLike | None = None,
+    ):
         """
         Bot 클래스 인스턴스를 초기화합니다.
 
@@ -25,8 +33,11 @@ class Bot:
             appkey (str): 파일경로 / 앱키
             secretkey (str): 파일경로 / 시크릿키
             api (API, optional): API를 별도로 구현했다면 인스턴스 전달가능
+            logger (LoggerLike, optional): 내부 API 로그에 사용할 logger
         """
-        self.api = api if api else API(host, appkey, secretkey)
+        self.api = api if api else API(host, appkey, secretkey, logger=logger)
+        if api and logger is not None:
+            self.api.set_logger(logger)
 
     async def __aenter__(self) -> Self:
         """
@@ -59,6 +70,12 @@ class Bot:
         """
         self.api.debugging = debugging
 
+    def set_logger(self, logger: LoggerLike | None = None) -> None:
+        """
+        내부 API와 WebSocket에서 사용할 logger를 설정합니다.
+        """
+        self.api.set_logger(logger)
+
     def token(self) -> str:
         """
         연결이 되었다면, 키움 REST API 토큰을 반환합니다.
@@ -68,25 +85,41 @@ class Bot:
         """
         return self.api.token()
 
-    async def connect(self, headers: Optional[dict] = None):
+    async def connect(
+        self,
+        headers: Optional[dict] = None,
+        logger: LoggerLike | None = None,
+    ):
         """
         키움 REST API HTTP 서버 및 Websocket 서버에 접속합니다.
 
         Args:
             headers (dict): 서버 연결 시 사용할 헤더 (User-Agent 등)
+            logger (LoggerLike, optional): 연결 및 WebSocket background task 로그에 사용할 logger
         """
-        await self.api.connect(headers)
+        if logger is not None:
+            self.set_logger(logger)
+        await self.api.connect(headers, logger=logger)
         await asyncio.sleep(1)
 
-    async def close(self):
+    async def close(self, logger: LoggerLike | None = None):
         """
         키움 REST API HTTP 서버 및 Websocket 서버 연결을 해제합니다.
         """
-        await asyncio.shield(self.api.close())
+        await asyncio.shield(self.api.close(logger=logger))
 
-    async def stock_list(self, market: str, ats: bool = True) -> list[str]:
+    async def stock_list(
+        self,
+        market: str,
+        ats: bool = True,
+        logger: LoggerLike | None = None,
+    ) -> list[str]:
         """
         주어진 market 코드에 해당하는 주식 종목코드 목록을 반환합니다.
+
+        Deprecated:
+            REST TR 조회 helper는 하위 호환성을 위해 유지됩니다.
+            신규 코드는 외부 REST TR client 사용을 권장합니다.
 
         Args:
             market (str): {
@@ -95,6 +128,7 @@ class Bot:
                 'ETF': '8', '하이일드펀드': '9', 'K-OTC': '30',
                 'KONEX': '50', 'ETN': '60', 'NXT': 'NXT'}
             ats (bool, optional): 대체거래소 반영한 통합코드 여부 (ex. '005930_AL')
+            logger (LoggerLike, optional): 요청 로그에 사용할 logger
 
         Returns:
             list[str]: 종목코드 리스트
@@ -102,29 +136,38 @@ class Bot:
 
         # Add NXT market
         if market == "NXT":
-            kospi = await self.stock_list("0")
-            kosdaq = await self.stock_list("10")
+            kospi = await self.stock_list("0", logger=logger)
+            kosdaq = await self.stock_list("10", logger=logger)
             codes = [c for c in kospi + kosdaq if "AL" in c]
             return sorted(codes)
 
-        data = await self.api.stock_list(market)
+        data = await self.api.stock_list(market, logger=logger)
         codes = proc.stock_list(data, ats)
         return codes
 
-    async def sector_list(self, market: str) -> list[str]:
+    async def sector_list(
+        self,
+        market: str,
+        logger: LoggerLike | None = None,
+    ) -> list[str]:
         """
         주어진 market 코드에 해당하는 업종코드 목록을 반환합니다.
+
+        Deprecated:
+            REST TR 조회 helper는 하위 호환성을 위해 유지됩니다.
+            신규 코드는 외부 REST TR client 사용을 권장합니다.
 
         Args:
             market (str): {
                 '0': 'KOSPI', '1': 'KOSDAQ',
                 '2': 'KOSPI200', '4': 'KOSPI100(150)',
                 '7': 'KRX100'}
+            logger (LoggerLike, optional): 요청 로그에 사용할 logger
 
         Returns:
             list[str]: 업종코드 리스트
         """
-        data = await self.api.sector_list(market)
+        data = await self.api.sector_list(market, logger=logger)
         codes = proc.sector_list(data)
         return codes
 
@@ -135,9 +178,14 @@ class Bot:
         ctype: str,
         start: str = "",
         end: str = "",
+        logger: LoggerLike | None = None,
     ) -> DataFrame:
         """
         주어진 코드, 기간, 종목/업종 유형에 해당하는 캔들차트 데이터를 반환합니다.
+
+        Deprecated:
+            REST TR 조회 helper는 하위 호환성을 위해 유지됩니다.
+            신규 코드는 외부 REST TR client 사용을 권장합니다.
 
         Args:
             code (str): 종목코드 / 업종코드
@@ -145,19 +193,29 @@ class Bot:
             ctype (str): 종목 / 업종유형 {"stock", "sector"}
             start (str, optional): 시작일자 in YYYYMMDD format
             end (str, optional): 종료일자 in YYYYMMDD format
+            logger (LoggerLike, optional): 요청 로그에 사용할 logger
 
         Returns:
             DataFrame: Pandas 캔들차트 데이터프레임
         """
-        data = await self.api.candle(code, period, ctype, start, end)
+        data = await self.api.candle(code, period, ctype, start, end, logger=logger)
         df = proc.candle.process(data, code, period, ctype, start, end)
         return df
 
-    async def trade(self, start: str, end: str = "") -> DataFrame:
+    async def trade(
+        self,
+        start: str,
+        end: str = "",
+        logger: LoggerLike | None = None,
+    ) -> DataFrame:
         """
         주어진 시작일자와 종료일자에 해당하는 체결내역을
         키움증권 '0343' 계좌 체결내역 화면과 동일한 구성으로 반환합니다.
         데이터 조회 제한으로 최근 2개월 데이터만 조회할 수 있습니다.
+
+        Deprecated:
+            REST TR 조회 helper는 하위 호환성을 위해 유지됩니다.
+            신규 코드는 외부 REST TR client 사용을 권장합니다.
 
         체결내역 데이터는 [알파노트](http://alphanote.io)를 통해
         간편하게 진입/청산 시각화 및 성과 지표들을 확인할 수 있습니다.
@@ -165,11 +223,12 @@ class Bot:
         Args:
             start (str): 시작일자 in YYYYMMDD format
             end (str, optional): 종료일자 in YYYYMMDD format
+            logger (LoggerLike, optional): 요청 로그에 사용할 logger
 
         Returns:
             DataFrame: 키움증권 '0343' 화면 'Excel 내보내기' 형식
         """
-        data = await self.api.trade(start, end)
+        data = await self.api.trade(start, end, logger=logger)
         df = proc.trade.process(data)
         return df
 
