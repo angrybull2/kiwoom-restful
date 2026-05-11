@@ -125,3 +125,14 @@ except KiwoomAPIError as err:
 ```
 
 실시간 수집에서는 `ConnectionError`를 reconnect 신호로 취급하고, `KiwoomInvalidTickerError`는 종목 단위 skip, `KiwoomRateLimitError`와 `KiwoomServerError`는 제한적 retry 대상으로 분리하면 원인분석과 자동 복구가 쉬워진다.
+
+## 개발/배포 메모
+
+다음 커밋/푸시 작업에서 참고할 사항은 아래와 같다.
+
+- Codex 기본 샌드박스 실행이 `bubblewrap is unavailable`로 실패할 수 있다. 이 경우 git/rg/sed/pytest 같은 확인 명령은 승인된 외부 실행으로 진행한다.
+- 로컬 기본 Python에는 `pytest`가 없고, `.venv/bin/pytest`도 없다. 현재 확인 가능한 테스트 실행 경로는 `conda run -n nnml pytest ...`이다.
+- 전체 `pytest`는 기존 async 테스트에 `pytest-asyncio` 같은 플러그인/fixture 설정이 없어 실패할 수 있다. 이번 변경 검증은 `conda run -n nnml pytest test/test_errors.py`로 수행했고 `8 passed`를 확인했다.
+- `origin` remote는 HTTPS(`https://github.com/angrybull2/kiwoom-restful.git`)라 비대화식 환경에서 `git push origin main`이 GitHub username 입력 실패로 막힐 수 있다.
+- SSH 키는 사용 가능했으므로 푸시는 `git push git@github.com:angrybull2/kiwoom-restful.git main`으로 진행한다.
+- SSH 직접 푸시 뒤 로컬 추적 브랜치가 `ahead 1`로 남으면 `git fetch git@github.com:angrybull2/kiwoom-restful.git main:refs/remotes/origin/main`으로 `origin/main` 참조를 맞춘다.
